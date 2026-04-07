@@ -15,8 +15,10 @@ import {
 import { collectWorkspaceContext } from "./context.mjs";
 import {
   Spinner,
+  bold,
   claude as claudeColor,
   codex as codexColor,
+  dim,
   withSpinner,
 } from "./terminal.mjs";
 import {
@@ -29,6 +31,99 @@ import {
 } from "./utils.mjs";
 import { setFeaturesFromPlan, setPhase, saveState } from "./state.mjs";
 
+const MAX_PLAN_FINALIZATION_ROUNDS = 3;
+
+function normalizeText(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeFeature(feature) {
+  return {
+    id: normalizeText(feature.id),
+    name: normalizeText(feature.name),
+    description: normalizeText(feature.description),
+    acceptance_criteria: (feature.acceptance_criteria || []).map((item) => normalizeText(item)),
+    estimated_complexity: normalizeText(feature.estimated_complexity),
+  };
+}
+
+function normalizePlanCore(plan) {
+  return {
+    features: (plan.features || []).map(normalizeFeature),
+    test_command: normalizeText(plan.test_command),
+    lint_command: normalizeText(plan.lint_command),
+    git_strategy: {
+      base_branch: normalizeText(plan.git_strategy?.base_branch),
+      branch_prefix: normalizeText(plan.git_strategy?.branch_prefix),
+    },
+  };
+}
+
+function plansAreEquivalent(left, right) {
+  return JSON.stringify(normalizePlanCore(left)) === JSON.stringify(normalizePlanCore(right));
+}
+
+function mergePlanSummaries(left, right) {
+  const a = String(left.summary || "").trim();
+  const b = String(right.summary || "").trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (a === b) return a;
+  return [
+    "Shared plan rationale:",
+    `- ${a}`,
+    `- ${b}`,
+  ].join("\n");
+}
+
+function buildSharedPlan(left, right) {
+  return {
+    ...left,
+    summary: mergePlanSummaries(left, right),
+  };
+}
+
+function renderPlanSnapshot(plan) {
+  return [
+    `Summary: ${plan.summary || "(none)"}`,
+    `Commands: test=${plan.test_command || "true"} / lint=${plan.lint_command || "true"}`,
+    `Git: ${plan.git_strategy?.base_branch || "(none)"} / ${plan.git_strategy?.branch_prefix || "(none)"}`,
+    "Features:",
+    ...(plan.features || []).map(
+      (feature) =>
+        `- ${feature.id} | ${feature.name} | ${feature.estimated_complexity} | ${(feature.acceptance_criteria || []).join("; ")}`,
+    ),
+  ].join("\n");
+}
+
+function renderPlanFinalizationTranscript(rounds) {
+  if (!rounds.length) {
+    return "(none)";
+  }
+
+  return rounds.map((round) => [
+    `Plan Finalization Round ${round.round}`,
+    `[Codex message] ${round.codex.message_to_other}`,
+    `[Codex decision] ${round.codex.decision.status} / ${round.codex.decision.reason}`,
+    `[Codex plan]`,
+    renderPlanSnapshot(round.codex),
+    `[Claude message] ${round.claude.message_to_other}`,
+    `[Claude decision] ${round.claude.decision.status} / ${round.claude.decision.reason}`,
+    `[Claude plan]`,
+    renderPlanSnapshot(round.claude),
+  ].join("\n")).join("\n\n");
+}
+
+function printPlanFinalizationRound(roundNumber, codexPlan, claudePlan) {
+  console.log(`\n${bold("[Plan Finalization Round " + roundNumber + "]")}`);
+  console.log(`${codexColor("Codex ->")} ${codexPlan.message_to_other}`);
+  console.log(dim(`  decision: ${codexPlan.decision.status} / ${codexPlan.decision.reason}`));
+  console.log(dim(`  features: ${(codexPlan.features || []).map((feature) => feature.id).join(", ") || "(none)"}`));
+  console.log(`${claudeColor("Claude ->")} ${claudePlan.message_to_other}`);
+  console.log(dim(`  decision: ${claudePlan.decision.status} / ${claudePlan.decision.reason}`));
+  console.log(dim(`  features: ${(claudePlan.features || []).map((feature) => feature.id).join(", ") || "(none)"}`));
+}
+
 async function finalizePlan({
   codexAgent,
   claudeAgent,
@@ -37,70 +132,141 @@ async function finalizePlan({
   workshopRounds,
   workshopUserInputs,
   spinner,
+  runDir,
+  maxRounds = MAX_PLAN_FINALIZATION_ROUNDS,
 }) {
-  const transcript = renderPlanningTranscript(workshopRounds, workshopUserInputs);
   const userContributions = workshopUserInputs.length
     ? workshopUserInputs.map((entry) => `User ${entry.index}: ${entry.text}`).join("\n")
     : "(none)";
+  const rounds = [];
 
-  const codexPrompt = buildPlanFinalizationPrompt({
-    agentName: "Codex",
-    otherAgentName: "Claude",
-    userTask,
-    context,
-    transcript: truncate(transcript, 16_000),
-    userContributions,
-  });
-  const claudePrompt = buildPlanFinalizationPrompt({
-    agentName: "Claude",
-    otherAgentName: "Codex",
-    userTask,
-    context,
-    transcript: truncate(transcript, 16_000),
-    userContributions,
-  });
+  for (let round = 1; round <= maxRounds; round += 1) {
+    const planningTranscript = renderPlanningTranscript(workshopRounds, workshopUserInputs);
+    const finalizationTranscript = renderPlanFinalizationTranscript(rounds);
+    const transcript = [
+      `Planning workshop transcript:\n${planningTranscript}`,
+      `Plan finalization transcript:\n${finalizationTranscript}`,
+    ].join("\n\n");
+    const lastRound = rounds[rounds.length - 1] || null;
 
-  const codexResult = await withSpinner(
-    spinner,
-    `${codexColor("Codex")} is finalizing plan...`,
-    () => codexAgent.runStructured({
-      name: "plan-finalization",
-      prompt: codexPrompt,
-      schema: planFinalizationSchema,
-    }),
-  );
+    const codexPrompt = buildPlanFinalizationPrompt({
+      agentName: "Codex",
+      otherAgentName: "Claude",
+      userTask,
+      context,
+      transcript: truncate(transcript, 20_000),
+      userContributions,
+      roundNumber: round,
+      maxRounds,
+      previousDraft: lastRound?.codex,
+      otherDraft: lastRound?.claude,
+    });
+    const claudePrompt = buildPlanFinalizationPrompt({
+      agentName: "Claude",
+      otherAgentName: "Codex",
+      userTask,
+      context,
+      transcript: truncate(transcript, 20_000),
+      userContributions,
+      roundNumber: round,
+      maxRounds,
+      previousDraft: lastRound?.claude,
+      otherDraft: lastRound?.codex,
+    });
 
-  const claudeResult = await withSpinner(
-    spinner,
-    `${claudeColor("Claude")} is finalizing plan...`,
-    () => claudeAgent.runStructured({
-      name: "plan-finalization",
-      prompt: claudePrompt,
-      schema: planFinalizationSchema,
-      systemPrompt: debateSystemPrompt("Claude", "Codex"),
-      disableTools: true,
-    }),
-  );
+    const codexResult = await withSpinner(
+      spinner,
+      `${codexColor("Codex")} is finalizing plan...`,
+      () => codexAgent.runStructured({
+        name: `plan-finalization-r${String(round).padStart(2, "0")}`,
+        prompt: codexPrompt,
+        schema: planFinalizationSchema,
+      }),
+    );
 
-  if (!codexResult.ok || !claudeResult.ok) {
-    return {
-      ok: false,
-      error: codexResult.error || claudeResult.error,
-    };
+    const claudeResult = await withSpinner(
+      spinner,
+      `${claudeColor("Claude")} is finalizing plan...`,
+      () => claudeAgent.runStructured({
+        name: `plan-finalization-r${String(round).padStart(2, "0")}`,
+        prompt: claudePrompt,
+        schema: planFinalizationSchema,
+        systemPrompt: debateSystemPrompt("Claude", "Codex"),
+        disableTools: true,
+      }),
+    );
+
+    if (!codexResult.ok || !claudeResult.ok) {
+      return {
+        ok: false,
+        error: codexResult.error || claudeResult.error,
+      };
+    }
+
+    if (
+      !validatePlanFinalizationShape(codexResult.parsed) ||
+      !validatePlanFinalizationShape(claudeResult.parsed)
+    ) {
+      return { ok: false, error: "Invalid plan finalization shape" };
+    }
+
+    rounds.push({
+      round,
+      codex: codexResult.parsed,
+      claude: claudeResult.parsed,
+    });
+    await writeJson(path.join(runDir, "plan-finalization.rounds.json"), rounds);
+    printPlanFinalizationRound(round, codexResult.parsed, claudeResult.parsed);
+
+    const equivalent = plansAreEquivalent(codexResult.parsed, claudeResult.parsed);
+    const bothAgree =
+      codexResult.parsed.decision.status === "agree" &&
+      claudeResult.parsed.decision.status === "agree";
+    const bothNeedUserInput =
+      codexResult.parsed.decision.status === "needs_user_input" &&
+      claudeResult.parsed.decision.status === "needs_user_input";
+
+    if (equivalent && !bothNeedUserInput && (bothAgree || round === maxRounds)) {
+      return {
+        ok: true,
+        plan: buildSharedPlan(codexResult.parsed, claudeResult.parsed),
+        alt: {
+          codex: codexResult.parsed,
+          claude: claudeResult.parsed,
+        },
+        rounds,
+      };
+    }
+
+    if (bothNeedUserInput) {
+      return {
+        ok: false,
+        status: "needs_user_input",
+        reason: [
+          `Codex: ${codexResult.parsed.decision.reason}`,
+          `Claude: ${claudeResult.parsed.decision.reason}`,
+        ].join("\n"),
+        latest: {
+          codex: codexResult.parsed,
+          claude: claudeResult.parsed,
+        },
+        rounds,
+      };
+    }
   }
 
-  if (
-    !validatePlanFinalizationShape(codexResult.parsed) ||
-    !validatePlanFinalizationShape(claudeResult.parsed)
-  ) {
-    return { ok: false, error: "Invalid plan finalization shape" };
-  }
-
-  // Codex의 plan을 채택하되 둘 다 저장.
+  const lastRound = rounds[rounds.length - 1];
   return {
-    ok: true,
-    plan: codexResult.parsed,
-    alt: claudeResult.parsed,
+    ok: false,
+    status: "needs_user_input",
+    reason: "최종 플랜 합의에 실패했습니다. 어떤 방향을 우선할지 사용자 판단이 필요합니다.",
+    latest: lastRound
+      ? {
+          codex: lastRound.codex,
+          claude: lastRound.claude,
+        }
+      : null,
+    rounds,
   };
 }
 
@@ -165,18 +331,71 @@ export async function runPlanner({
   if (ui?.section) ui.section("Plan Finalization");
   else printSection("Plan Finalization");
 
-  const finalized = await finalizePlan({
-    codexAgent,
-    claudeAgent,
-    context,
-    userTask,
-    workshopRounds: workshop.rounds,
-    workshopUserInputs: workshop.userInputs,
-    spinner,
-  });
+  const finalizationInputs = [];
+  let finalized = null;
 
-  if (!finalized.ok) {
-    return { status: "error", error: finalized.error };
+  while (true) {
+    finalized = await finalizePlan({
+      codexAgent,
+      claudeAgent,
+      context,
+      userTask,
+      workshopRounds: workshop.rounds,
+      workshopUserInputs: [...workshop.userInputs, ...finalizationInputs],
+      spinner,
+      runDir: artifactsRoot,
+    });
+
+    if (finalized.ok) {
+      break;
+    }
+
+    if (finalized.status !== "needs_user_input") {
+      return { status: "error", error: finalized.error };
+    }
+
+    if (!process.stdin.isTTY && !ui?.compose) {
+      return { status: "paused_for_user" };
+    }
+
+    const latestCodex = finalized.latest?.codex
+      ? renderPlanSnapshot(finalized.latest.codex)
+      : "(none)";
+    const latestClaude = finalized.latest?.claude
+      ? renderPlanSnapshot(finalized.latest.claude)
+      : "(none)";
+    const reply = await requestUserInput({
+      ui,
+      title: "You",
+      instructions: [
+        "최종 플랜 합의에 추가 사용자 판단이 필요합니다.",
+        finalized.reason,
+        "",
+        "[Codex latest draft]",
+        latestCodex,
+        "",
+        "[Claude latest draft]",
+        latestClaude,
+        "",
+        "우선할 방향, 제외할 기능, 테스트/브랜치 전략 같은 제약을 입력하세요. /stop 은 종료합니다.",
+      ].join("\n"),
+      commands: [
+        { name: "stop", description: "세션 종료" },
+      ],
+    });
+
+    if (reply.type === "command" && reply.command === "stop") {
+      return { status: "paused_for_user" };
+    }
+
+    if (reply.type !== "message" || !reply.text.trim()) {
+      return { status: "paused_for_user" };
+    }
+
+    finalizationInputs.push({
+      index: workshop.userInputs.length + finalizationInputs.length + 1,
+      text: `[Final plan clarification]\n${reply.text.trim()}`,
+    });
   }
 
   const warnings = await verifyPlanCommands(workspace, finalized.plan);
@@ -216,6 +435,7 @@ export async function runPlanner({
   await writeJson(path.join(artifactsRoot, "plan-finalization.json"), {
     primary: finalized.plan,
     alt: finalized.alt,
+    rounds: finalized.rounds,
   });
 
   nextState = await saveState(workspace, nextState);

@@ -90,6 +90,8 @@ npm run doctor
 
 이 오케스트레이터는 Claude API 키가 아니라 `claude` CLI의 로그인 상태를 그대로 사용합니다.
 
+일반 실행(`chat`, `plan`, `run`, `pipeline`)을 시작하면 먼저 `codex`와 `claude` 로그인 상태를 확인합니다. 미로그인 상태면 현재 터미널에서 자동으로 로그인 절차를 시작한 뒤, 인증이 확인되어야 다음 단계로 진행합니다.
+
 만약 실행 시 Claude 쪽에서 `Not logged in`이 뜨면 다음 중 하나를 먼저 완료해야 합니다.
 
 ```bash

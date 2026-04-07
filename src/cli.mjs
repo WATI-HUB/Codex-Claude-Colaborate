@@ -1,15 +1,14 @@
 import path from "node:path";
 import os from "node:os";
+import { ensureAuthenticated, getAuthStatus } from "./auth.mjs";
 import { startChatSession } from "./chat-session.mjs";
 import { runOrchestrator } from "./orchestrator.mjs";
 import { runFullPipeline, runPlanOnly, runResume } from "./pipeline.mjs";
 import { loadState } from "./state.mjs";
 import {
   commandExists,
-  extractJson,
   pathExists,
   printSection,
-  runLoginShell,
 } from "./utils.mjs";
 
 const homeDir = os.homedir();
@@ -147,23 +146,36 @@ async function doctor(options) {
 
   const codexBin = await resolveBinary(options.codexBin, "codex");
   const claudeBin = await resolveBinary(options.claudeBin, "claude");
-  const codexAuth = await pathExists(path.join(homeDir, ".codex/auth.json"));
-  const claudeAuth = await pathExists(path.join(homeDir, ".claude.json"));
-  const claudeAuthStatusResult = await runLoginShell(["claude", "auth", "status"], {
-    cwd: options.workspace,
-    allowFailure: true,
-    timeoutMs: 10_000,
-  });
-  const claudeAuthStatus = extractJson(claudeAuthStatusResult.stdout);
+  const authStatus =
+    codexBin && claudeBin
+      ? await getAuthStatus({
+          codexBin,
+          claudeBin,
+          workspace: options.workspace,
+        })
+      : null;
 
   console.log(`Workspace: ${options.workspace}`);
   console.log(`Codex binary: ${codexBin || "not found"}`);
   console.log(`Claude binary: ${claudeBin || "not found"}`);
-  console.log(`Codex login artifact: ${codexAuth ? "found" : "missing"}`);
-  console.log(`Claude login artifact: ${claudeAuth ? "found" : "missing"}`);
+  console.log(
+    `Codex login artifact: ${
+      authStatus ? (authStatus.codex.artifactFound ? "found" : "missing") : "unknown"
+    }`,
+  );
+  console.log(
+    `Claude login artifact: ${
+      authStatus ? (authStatus.claude.artifactFound ? "found" : "missing") : "unknown"
+    }`,
+  );
+  console.log(
+    `Codex login status: ${
+      authStatus ? (authStatus.codex.loggedIn ? "logged in" : "not logged in") : "unknown"
+    }`,
+  );
   console.log(
     `Claude login shell auth: ${
-      claudeAuthStatus && claudeAuthStatus.loggedIn === true ? "logged in" : "not logged in"
+      authStatus ? (authStatus.claude.loggedIn ? "logged in" : "not logged in") : "unknown"
     }`,
   );
 
@@ -241,6 +253,13 @@ Options:
     process.exitCode = 1;
     return;
   }
+
+  await ensureAuthenticated({
+    workspace: path.resolve(options.workspace),
+    codexBin,
+    claudeBin,
+    onMessage: (message) => console.log(message),
+  });
 
   if (options.command === "chat" && !options.task.trim()) {
     await startChatSession({

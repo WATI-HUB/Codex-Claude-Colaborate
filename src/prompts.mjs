@@ -383,6 +383,7 @@ export const planFinalizationSchema = {
     "test_command",
     "lint_command",
     "git_strategy",
+    "message_to_other",
     "decision",
   ],
   properties: {
@@ -419,6 +420,7 @@ export const planFinalizationSchema = {
         branch_prefix: { type: "string" },
       },
     },
+    message_to_other: { type: "string" },
     decision: {
       type: "object",
       additionalProperties: false,
@@ -472,6 +474,7 @@ export function validatePlanFinalizationShape(out) {
     out.git_strategy &&
     typeof out.git_strategy.base_branch === "string" &&
     typeof out.git_strategy.branch_prefix === "string" &&
+    typeof out.message_to_other === "string" &&
     out.decision &&
     typeof out.decision.status === "string"
   );
@@ -494,13 +497,30 @@ export function buildPlanFinalizationPrompt({
   context,
   transcript,
   userContributions,
+  roundNumber = 1,
+  maxRounds = 3,
+  previousDraft,
+  otherDraft,
 }) {
+  const draftInstructions = roundNumber === 1
+    ? [
+        "이번 라운드는 독립 초안 작성입니다.",
+        `아직 ${otherAgentName}의 초안을 보지 못했다고 가정하고, 현재 정보만으로 최선의 실행 플랜을 만드세요.`,
+      ].join("\n")
+    : [
+        `이번은 최종화 라운드 ${roundNumber}/${maxRounds} 입니다.`,
+        `이제 ${otherAgentName}의 초안과 메시지를 검토했습니다.`,
+        "좋은 점은 반영하고, 불필요한 차이는 줄이고, 실제로 합의 가능한 단일 shared plan으로 수렴하세요.",
+        "상대 초안이 더 낫다면 그 방향으로 수정해도 됩니다.",
+      ].join("\n");
+
   return [
     `Phase: plan-finalization`,
     `You are ${agentName}. The other agent is ${otherAgentName}.`,
     "",
-    "두 에이전트가 합의한 기획을 최종 구조화된 플랜으로 변환합니다.",
+    "두 에이전트가 기획 논의를 바탕으로 최종 구조화된 플랜에 합의해야 합니다.",
     "기능을 작은 단위로 잘라서 features 배열에 배치하세요. 각 feature는 독립적으로 구현/테스트/커밋 가능해야 합니다.",
+    draftInstructions,
     "",
     "User task:",
     userTask,
@@ -509,12 +529,21 @@ export function buildPlanFinalizationPrompt({
     "",
     transcript ? `Planning transcript:\n${transcript}\n` : "",
     userContributions ? `User contributions:\n${userContributions}\n` : "",
+    previousDraft
+      ? `Your previous final plan draft:\n${JSON.stringify(previousDraft, null, 2)}\n`
+      : "",
+    otherDraft
+      ? `${otherAgentName} previous final plan draft:\n${JSON.stringify(otherDraft, null, 2)}\n`
+      : "",
     "Output contract:",
     "- JSON only.",
     "- features: 각 항목은 id (feature-001 형식), name, description, acceptance_criteria(테스트 가능한 조건), estimated_complexity(small|medium|large).",
     "- test_command/lint_command: 워크스페이스에서 실제로 실행 가능한 명령. 없으면 'true' 사용.",
     "- git_strategy: base_branch(예: main), branch_prefix(예: feature/).",
-    "- decision.status=agree 면 최종 확정. needs_user_input 이면 사용자 확인 필요.",
+    "- message_to_other: 상대 초안을 리뷰하고 어디에 동의/반대하는지 짧고 구체적으로 작성.",
+    "- decision.status=agree 는 당신이 이 출력이 shared plan으로 충분하다고 판단할 때만 사용.",
+    "- decision.status=continue 는 아직 상대와 차이가 남아 한 번 더 조정이 필요할 때 사용.",
+    "- decision.status=needs_user_input 는 사용자 선호/제품 판단이 없으면 수렴할 수 없을 때만 사용.",
   ]
     .filter(Boolean)
     .join("\n");

@@ -35,8 +35,15 @@ export class TerminalChatUI {
     this.handleSigCont = () => {
       this.closedByIo = false;
     };
+    // Some shells enable job-control behaviors that can stop the process with
+    // "tty output" when readline toggles terminal state. Ignore these signals
+    // so the foreground chat session stays interactive.
+    this.handleSigTtou = () => {};
+    this.handleSigTtin = () => {};
     process.on("SIGTSTP", this.handleSigTstp);
     process.on("SIGCONT", this.handleSigCont);
+    process.on("SIGTTOU", this.handleSigTtou);
+    process.on("SIGTTIN", this.handleSigTtin);
   }
 
   close() {
@@ -44,6 +51,8 @@ export class TerminalChatUI {
     this.closeActiveInterface();
     process.off("SIGTSTP", this.handleSigTstp);
     process.off("SIGCONT", this.handleSigCont);
+    process.off("SIGTTOU", this.handleSigTtou);
+    process.off("SIGTTIN", this.handleSigTtin);
   }
 
   closeActiveInterface() {

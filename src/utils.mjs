@@ -196,6 +196,47 @@ export async function runCommand(command, args = [], options = {}) {
   });
 }
 
+export async function runInteractiveCommand(command, args = [], options = {}) {
+  const {
+    cwd,
+    env = {},
+  } = options;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: {
+        ...process.env,
+        ...env,
+      },
+      stdio: "inherit",
+    });
+
+    child.on("error", reject);
+
+    child.on("close", (code, signal) => {
+      const result = {
+        command,
+        args,
+        cwd,
+        exitCode: code ?? -1,
+        signal: signal ?? null,
+      };
+
+      if (result.exitCode !== 0) {
+        const error = new Error(
+          `Command failed (${result.exitCode}): ${command} ${args.join(" ")}`,
+        );
+        error.result = result;
+        reject(error);
+        return;
+      }
+
+      resolve(result);
+    });
+  });
+}
+
 export function shellEscape(value) {
   if (value === "") {
     return "''";
@@ -206,6 +247,11 @@ export function shellEscape(value) {
 export async function runLoginShell(commandParts, options = {}) {
   const commandString = commandParts.map((part) => shellEscape(part)).join(" ");
   return runCommand("zsh", ["-lic", commandString], options);
+}
+
+export async function runInteractiveLoginShell(commandParts, options = {}) {
+  const commandString = commandParts.map((part) => shellEscape(part)).join(" ");
+  return runInteractiveCommand("zsh", ["-lic", commandString], options);
 }
 
 export function formatBulletList(items) {

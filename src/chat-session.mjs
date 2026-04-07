@@ -1,24 +1,21 @@
-import path from "node:path";
-import os from "node:os";
+import { getAuthStatus } from "./auth.mjs";
 import { TerminalChatUI } from "./chat-ui.mjs";
 import { runFullPipeline } from "./pipeline.mjs";
-import { commandExists, extractJson, pathExists, runLoginShell } from "./utils.mjs";
-
-const homeDir = os.homedir();
+import { commandExists, pathExists } from "./utils.mjs";
 
 async function showDoctor(ui, options) {
   const codexBinFound =
     (await pathExists(options.codexBin)) || (await commandExists("codex"));
   const claudeBinFound =
     (await pathExists(options.claudeBin)) || (await commandExists("claude"));
-  const codexAuth = await pathExists(path.join(homeDir, ".codex/auth.json"));
-  const claudeAuth = await pathExists(path.join(homeDir, ".claude.json"));
-  const claudeAuthStatusResult = await runLoginShell(["claude", "auth", "status"], {
-    cwd: options.workspace,
-    allowFailure: true,
-    timeoutMs: 10_000,
-  });
-  const claudeAuthStatus = extractJson(claudeAuthStatusResult.stdout);
+  const authStatus =
+    codexBinFound && claudeBinFound
+      ? await getAuthStatus({
+          codexBin: options.codexBin,
+          claudeBin: options.claudeBin,
+          workspace: options.workspace,
+        })
+      : null;
 
   ui.section("Doctor");
   ui.info(
@@ -26,10 +23,17 @@ async function showDoctor(ui, options) {
       `Workspace: ${options.workspace}`,
       `Codex binary: ${codexBinFound ? options.codexBin : "not found"}`,
       `Claude binary: ${claudeBinFound ? options.claudeBin : "not found"}`,
-      `Codex login artifact: ${codexAuth ? "found" : "missing"}`,
-      `Claude login artifact: ${claudeAuth ? "found" : "missing"}`,
+      `Codex login artifact: ${
+        authStatus ? (authStatus.codex.artifactFound ? "found" : "missing") : "unknown"
+      }`,
+      `Claude login artifact: ${
+        authStatus ? (authStatus.claude.artifactFound ? "found" : "missing") : "unknown"
+      }`,
+      `Codex login status: ${
+        authStatus ? (authStatus.codex.loggedIn ? "logged in" : "not logged in") : "unknown"
+      }`,
       `Claude login shell auth: ${
-        claudeAuthStatus && claudeAuthStatus.loggedIn === true ? "logged in" : "not logged in"
+        authStatus ? (authStatus.claude.loggedIn ? "logged in" : "not logged in") : "unknown"
       }`,
     ].join("\n"),
   );
