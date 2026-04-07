@@ -1,0 +1,13 @@
+{
+  "name": "codex-claude-debate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local debate orchestrator for Codex and Claude Code without separate API billing",
+  "scripts": {
+    "start": "node ./src/cli.mjs",
+    "debate": "node ./src/cli.mjs",
+    "doctor": "node ./src/cli.mjs doctor",
+    "test": "node ./e2e-test.mjs"
+  }
+}
