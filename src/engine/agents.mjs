@@ -8,7 +8,7 @@ import {
   summarizeFailure,
   writeJson,
   writeText,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
 
 function schemaArg(schema) {
   return JSON.stringify(schema);

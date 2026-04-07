@@ -34,27 +34,27 @@
 
 | 파일 | 역할 |
 |---|---|
-| `src/state.mjs` | `.agent-debate/state.json` 읽기/쓰기. phase, features 진행 상태 추적 |
-| `src/git-ops.mjs` | git 브랜치/커밋/조회 (utils.mjs `runCommand` 래핑) |
-| `src/planner.mjs` | Phase 1 Plan Mode. PLAN.md/feature-XXX.md 산출 |
-| `src/executor.mjs` | Phase 3 TDD Execute. feature별 debate→implement→test→lint→commit→review 루프 |
-| `src/pipeline.mjs` | planner + state + executor 조립한 신규 최상위 (`runFullPipeline`) |
+| `src/core/state.mjs` | `.agent-debate/state.json` 읽기/쓰기. phase, features 진행 상태 추적 |
+| `src/engine/git-ops.mjs` | git 브랜치/커밋/조회 (utils.mjs `runCommand` 래핑) |
+| `src/engine/planner.mjs` | Phase 1 Plan Mode. PLAN.md/feature-XXX.md 산출 |
+| `src/engine/executor.mjs` | Phase 3 TDD Execute. feature별 debate→implement→test→lint→commit→review 루프 |
+| `src/engine/pipeline.mjs` | planner + state + executor 조립한 신규 최상위 (`runFullPipeline`) |
 
 ## 수정 파일
 
-### `src/orchestrator.mjs`
+### `src/engine/orchestrator.mjs`
 내부 헬퍼에 `export` 추가만 (동작 변경 0):
 `runDebateLoop`, `debateConsensus`, `runPlanningWorkshop`, `runVerification`, `requestUserInput`, `bothNeedUserInput`, `validateDebateShape`, `validatePlanningShape`, `validateVerificationShape`, `printDebateRound`, `printPlanningRound`, `formatElapsed`. `runOrchestrator`는 그대로.
 
-### `src/prompts.mjs` (확장)
+### `src/engine/prompts.mjs` (확장)
 - **Schemas**: `planFinalizationSchema`(features[{id,name,description,acceptance_criteria,estimated_complexity}], test_command, lint_command, git_strategy{base_branch,branch_prefix}, summary), `reviewSchema`(status: approve|request_changes|escalate, findings, message)
 - **Builders**: `buildPlanFinalizationPrompt`, `buildFeatureDebatePrompt`, `buildFeatureImplementationPrompt`, `buildReviewPrompt`, `buildTestFailureGuidance`
 - **Renderers**: `renderPlanSummaryMarkdown(planResult)`, `renderFeaturePlanMarkdown(feature)`
 
-### `src/cli.mjs`
+### `src/app/cli.mjs`
 서브커맨드 추가: `plan "task"`, `run`(state 이어서 실행), `status`. 기존 `chat`/`doctor`/`help` 유지. 인자 없이 task 문자열만 주면 `runFullPipeline` 자동 실행.
 
-### `src/chat-session.mjs`
+### `src/app/chat-session.mjs`
 import만 `runFullPipeline`로 갱신.
 
 ### `e2e-test.mjs`
@@ -109,13 +109,13 @@ Codex/Claude CLI는 매 호출마다 이미 새 subprocess이므로 "clear"는 *
 
 1. `src/state.mjs` (독립)
 2. `src/git-ops.mjs` (독립)
-3. `src/orchestrator.mjs`에 export 추가 (동작 변경 0)
-4. `src/prompts.mjs`에 새 schema/builder 추가
-5. `src/planner.mjs`
-6. `src/executor.mjs`
-7. `src/pipeline.mjs`
-8. `src/cli.mjs` 서브커맨드 라우팅
-9. `src/chat-session.mjs` import 갱신
+3. `src/engine/orchestrator.mjs`에 export 추가 (동작 변경 0)
+4. `src/engine/prompts.mjs`에 새 schema/builder 추가
+5. `src/engine/planner.mjs`
+6. `src/engine/executor.mjs`
+7. `src/engine/pipeline.mjs`
+8. `src/app/cli.mjs` 서브커맨드 라우팅
+9. `src/app/chat-session.mjs` import 갱신
 10. `e2e-test.mjs` 갱신
 
 ## 위험과 완화
@@ -128,10 +128,10 @@ Codex/Claude CLI는 매 호출마다 이미 새 subprocess이므로 "clear"는 *
 
 ## Verification
 
-1. `node src/cli.mjs doctor` — 바이너리/인증 정상
-2. `node src/cli.mjs plan "간단한 todo CLI"` — `.agent-debate/PLAN.md`와 `plans/feature-*.md` 생성
-3. `node src/cli.mjs status` — state.json 사람이 읽기 좋게 출력
-4. `node src/cli.mjs run` — feature 하나씩 진행, 각 commit이 git log에 남는지 확인
+1. `node src/app/cli.mjs doctor` — 바이너리/인증 정상
+2. `node src/app/cli.mjs plan "간단한 todo CLI"` — `.agent-debate/PLAN.md`와 `plans/feature-*.md` 생성
+3. `node src/app/cli.mjs status` — state.json 사람이 읽기 좋게 출력
+4. `node src/app/cli.mjs run` — feature 하나씩 진행, 각 commit이 git log에 남는지 확인
 5. `npm run test` — 새 파이프라인 smoke test 통과
 6. 합의 불가 시나리오 → 사용자 호출 동작 확인
 7. 컨텍스트 격리 회귀 테스트: feature N+1 프롬프트에 feature N transcript 미포함을 grep으로 확인
@@ -148,3 +148,30 @@ Codex/Claude CLI는 매 호출마다 이미 새 subprocess이므로 "clear"는 *
 - [x] 8. cli.mjs 서브커맨드
 - [x] 9. chat-session.mjs import
 - [x] 10. e2e-test.mjs
+
+## Current Handoff Status
+
+이 계획 문서는 대부분 구현 완료 상태다. 다만 아래 최근 변경은 원래 계획 이후 추가로 들어간 내용이다.
+
+### 최근 구현된 추가 사항
+
+1. **Auth gate 추가**
+   - `chat`, `plan`, `run`, `pipeline` 시작 전에 Codex/Claude 로그인 상태를 확인
+   - 미로그인 상태면 대화형 로그인 절차를 자동 시작
+   - 관련 파일: `src/core/auth.mjs`, `src/app/cli.mjs`, `src/app/chat-session.mjs`, `src/core/utils.mjs`
+
+2. **TTY suspend 완화**
+   - 채팅 UI에서 `SIGTTOU`/`SIGTTIN` 무시
+   - 관련 파일: `src/app/chat-ui.mjs`
+
+3. **Plan finalization 재설계**
+   - 예전: Codex final plan을 primary로 고정 채택
+   - 현재: 독립 초안 작성 → 상호 리뷰 → 수렴 라운드 → shared plan 채택
+   - 합의 실패 시 사용자 판단을 받아 다시 finalization 재시도
+   - 관련 파일: `src/engine/planner.mjs`, `src/engine/prompts.mjs`
+
+### 현재 확인된 리스크
+
+- Claude 로그인은 이 로컬 환경에서 OAuth callback server 오류 가능성이 있다.
+- 새 finalization 구조는 정적 문법 검사 완료, 실제 full pipeline E2E는 Claude 로그인 문제 때문에 아직 미완료다.
+- 따라서 다음 작업자는 `doctor`, `chat`, `plan` 실기동 순으로 먼저 확인하는 것이 안전하다.

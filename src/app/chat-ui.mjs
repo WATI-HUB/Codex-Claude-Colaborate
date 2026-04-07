@@ -1,6 +1,6 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { agentColor, sectionColor, userColor } from "./terminal.mjs";
+import { agentColor, sectionColor, userColor } from "../core/terminal.mjs";
 
 function normalizeCommands(commands) {
   return commands.map((command) => ({

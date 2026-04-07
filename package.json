@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Local debate orchestrator for Codex and Claude Code without separate API billing",
   "scripts": {
-    "start": "node ./src/cli.mjs",
-    "debate": "node ./src/cli.mjs",
-    "doctor": "node ./src/cli.mjs doctor",
+    "start": "node ./src/app/cli.mjs",
+    "debate": "node ./src/app/cli.mjs",
+    "doctor": "node ./src/app/cli.mjs doctor",
     "test": "node ./e2e-test.mjs"
   }
 }

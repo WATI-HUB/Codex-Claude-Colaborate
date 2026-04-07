@@ -1,7 +1,7 @@
-import { getAuthStatus } from "./auth.mjs";
+import { getAuthStatus } from "../core/auth.mjs";
 import { TerminalChatUI } from "./chat-ui.mjs";
-import { runFullPipeline } from "./pipeline.mjs";
-import { commandExists, pathExists } from "./utils.mjs";
+import { runFullPipeline } from "../engine/pipeline.mjs";
+import { commandExists, pathExists } from "../core/utils.mjs";
 
 async function showDoctor(ui, options) {
   const codexBinFound =

@@ -1,15 +1,15 @@
 import path from "node:path";
 import os from "node:os";
-import { ensureAuthenticated, getAuthStatus } from "./auth.mjs";
+import { ensureAuthenticated, getAuthStatus } from "../core/auth.mjs";
 import { startChatSession } from "./chat-session.mjs";
-import { runOrchestrator } from "./orchestrator.mjs";
-import { runFullPipeline, runPlanOnly, runResume } from "./pipeline.mjs";
-import { loadState } from "./state.mjs";
+import { runOrchestrator } from "../engine/orchestrator.mjs";
+import { runFullPipeline, runPlanOnly, runResume } from "../engine/pipeline.mjs";
+import { loadState } from "../core/state.mjs";
 import {
   commandExists,
   pathExists,
   printSection,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
 
 const homeDir = os.homedir();
 
@@ -189,13 +189,13 @@ async function main() {
 
   if (options.command === "help") {
     console.log(`Usage:
-  node src/cli.mjs
-  node src/cli.mjs chat
-  node src/cli.mjs "작업 지시"
-  node src/cli.mjs doctor
-  node src/cli.mjs plan "작업 지시"
-  node src/cli.mjs run
-  node src/cli.mjs status
+  node src/app/cli.mjs
+  node src/app/cli.mjs chat
+  node src/app/cli.mjs "작업 지시"
+  node src/app/cli.mjs doctor
+  node src/app/cli.mjs plan "작업 지시"
+  node src/app/cli.mjs run
+  node src/app/cli.mjs status
   zsh run-debate.sh
   zsh run-debate.sh "작업 지시"
 
@@ -316,7 +316,7 @@ Options:
   }
 
   if (!options.task.trim()) {
-    console.error("작업 지시가 비어 있습니다. 예: zsh run-debate.sh 또는 node src/cli.mjs \"로그인 화면 고쳐줘\"");
+    console.error("작업 지시가 비어 있습니다. 예: zsh run-debate.sh 또는 node src/app/cli.mjs \"로그인 화면 고쳐줘\"");
     process.exitCode = 1;
     return;
   }

@@ -11,8 +11,8 @@ Primary language is Korean for documentation and prompts.
 ## Commands
 
 ```bash
-node src/cli.mjs                    # Interactive chat mode
-node src/cli.mjs "task description" # Run single task
+node src/app/cli.mjs                    # Interactive chat mode
+node src/app/cli.mjs "task description" # Run single task
 npm run doctor                      # Verify Codex/Claude binaries and auth
 npm run test                        # E2E smoke test (node e2e-test.mjs)
 npm run debate -- "task"            # Alias for single task run
@@ -30,8 +30,21 @@ npm run debate -- "task"            # Alias for single task run
 
 ## Context References
 
-- @PLAN.md — 진행 중인 파이프라인 리디자인 마스터 플랜 (Plan Mode → Clear → TDD Execute). 작업 시작 시 항상 먼저 확인.
-- @src/CLAUDE.md — 오케스트레이션 파이프라인, 합의 로직, 에이전트 실행 모드, 프롬프트 설계, 소스 파일 맵
+- @PLAN.md — 진행 중인 파이프라인 리디자인 마스터 플랜
+- @src/CLAUDE.md — `src` 디렉터리 인덱스. 상세 내용을 여기 쌓지 말고 하위 문서로 이동
+- @src/app/CLAUDE.md — CLI, 채팅 세션, 터미널 상호작용
+- @src/core/CLAUDE.md — auth, state, utils, context, terminal
+- @src/engine/CLAUDE.md — pipeline, planner, executor, prompts, consensus
+
+## Current Handoff
+
+핵심만 루트에 남긴다.
+
+- 현재 활성 진입점은 `src/app/cli.mjs`
+- 활성 파이프라인은 `runFullPipeline`
+- `src/CLAUDE.md`는 인덱스만 유지하고, 상세 동작은 하위 폴더 `CLAUDE.md`에 둔다
+- 최근 큰 변경은 auth gate, tty suspend 완화, plan finalization 수렴형 재설계다
+- 로컬 환경에서는 Claude 로그인/OAuth callback 이슈 가능성이 있어 실기동 확인이 아직 필요하다
 
 ## Context Management Policy
 

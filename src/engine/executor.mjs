@@ -4,7 +4,7 @@ import {
   collectWorkspaceContext,
   diffSnapshots,
   snapshotWorkspace,
-} from "./context.mjs";
+} from "../core/context.mjs";
 import {
   buildFeatureDebatePrompt,
   buildFeatureImplementationPrompt,
@@ -29,7 +29,7 @@ import {
   dim,
   success,
   withSpinner,
-} from "./terminal.mjs";
+} from "../core/terminal.mjs";
 import {
   ensureDir,
   readText,
@@ -37,13 +37,13 @@ import {
   truncate,
   writeJson,
   writeText,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
 import {
   advanceFeature,
   currentFeature,
   saveState,
   updateFeature,
-} from "./state.mjs";
+} from "../core/state.mjs";
 import {
   commitAll,
   createBranch,

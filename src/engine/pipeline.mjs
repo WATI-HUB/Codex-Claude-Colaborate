@@ -6,8 +6,8 @@ import {
   createInitialState,
   loadState,
   saveState,
-} from "./state.mjs";
-import { ensureDir, nowStamp } from "./utils.mjs";
+} from "../core/state.mjs";
+import { ensureDir, nowStamp } from "../core/utils.mjs";
 
 function createAgents({
   workspace,

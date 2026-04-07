@@ -6,7 +6,7 @@ import {
   collectWorkspaceContext,
   diffSnapshots,
   snapshotWorkspace,
-} from "./context.mjs";
+} from "../core/context.mjs";
 import {
   buildPlanningPrompt,
   buildDebatePrompt,
@@ -29,7 +29,7 @@ import {
   bold,
   Spinner,
   withSpinner,
-} from "./terminal.mjs";
+} from "../core/terminal.mjs";
 import {
   ensureDir,
   nowStamp,
@@ -37,7 +37,7 @@ import {
   truncate,
   writeJson,
   writeText,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
 
 export function validatePlanningShape(agentOutput) {
   return (
