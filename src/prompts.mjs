@@ -449,7 +449,7 @@ export const reviewSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["severity", "issue", "suggested_fix"],
+        required: ["severity", "file", "issue", "suggested_fix"],
         properties: {
           severity: { type: "string", enum: ["high", "medium", "low"] },
           file: { type: "string" },
