@@ -25,40 +25,45 @@ npm run debate -- "task"            # Alias for single task run
 - `DEBATE_MAX_CYCLES` — max implement-verify-repair cycles (default: 3)
 - `DEBATE_SKIP_WORKSHOP=1` — skip planning workshop phase
 - `DEBATE_CODEX_BIN` / `DEBATE_CLAUDE_BIN` — override CLI paths
-- `DEBATE_CODEX_MODEL` / `DEBATE_CLAUDE_MODEL` — override models
+- `DEBATE_CODEX_MODEL` / `DEBATE_CLAUDE_MODEL` — override models (모든 phase 공통 fallback)
 - `DEBATE_CLAUDE_DANGEROUS=1` — pass `--dangerously-skip-permissions` to Claude
+
+### Phase별 모델 / effort / 권한 (전부 optional)
+
+4 phase: `plan`, `debate`, `implement`, `review`. 권장 패턴은 **plan/implement는 풀스펙 유지, debate/review만 절약**.
+
+Codex
+- `DEBATE_CODEX_EFFORT` (low|medium|high) — 전 phase 기본 reasoning effort
+- `DEBATE_CODEX_SANDBOX` (read-only|workspace-write|danger-full-access) — 전 phase 기본 sandbox
+- `DEBATE_CODEX_MODEL_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW` — phase별 모델
+- `DEBATE_CODEX_EFFORT_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW` — phase별 effort
+- `DEBATE_CODEX_SANDBOX_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW` — phase별 sandbox
+
+Claude
+- `DEBATE_CLAUDE_PERMISSION` (plan|acceptEdits|dontAsk|default|bypassPermissions) — 전 phase 기본
+- `DEBATE_CLAUDE_MODEL_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW` — phase별 모델
+- `DEBATE_CLAUDE_PERMISSION_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW` — phase별 권한 모드
+
+CLI 플래그도 env와 1:1 대응 (`--codex-model-debate`, `--claude-permission-review` 등).
+
+프리셋
+- `--cheap` — debate/review만 effort↓ + Claude `plan` 모드. plan/implement는 안 깎음. 모델 강제 다운시프트 없음
+- `--max` — 전 phase effort=high
+- 개별 플래그가 프리셋보다 우선
 
 ## Context References
 
-- @PLAN.md — 진행 중인 파이프라인 리디자인 마스터 플랜
-- @src/CLAUDE.md — `src` 디렉터리 인덱스. 상세 내용을 여기 쌓지 말고 하위 문서로 이동
+- @TODO.md — 활성 작업 체크리스트 (세션 시작 시 가장 먼저)
+- @src/CLAUDE.md — `src` 디렉터리 인덱스
 - @src/app/CLAUDE.md — CLI, 채팅 세션, 터미널 상호작용
 - @src/core/CLAUDE.md — auth, state, utils, context, terminal
 - @src/engine/CLAUDE.md — pipeline, planner, executor, prompts, consensus
 
 ## Current Handoff
 
-핵심만 루트에 남긴다.
+- 현재 활성 진입점은 `src/app/cli.mjs`, 활성 파이프라인은 `runFullPipeline`
+- 활성 작업 항목은 `TODO.md`, 작업 설계는 해당 Folder `CLAUDE.md`에 둔다 (이 Project Root에는 쌓지 않는다)
+- 최근 큰 변경: auth gate, tty suspend 완화, plan finalization 수렴형 재설계
+- 로컬 환경에서는 Claude 로그인/OAuth callback 이슈 가능성 있음
 
-- 현재 활성 진입점은 `src/app/cli.mjs`
-- 활성 파이프라인은 `runFullPipeline`
-- `src/CLAUDE.md`는 인덱스만 유지하고, 상세 동작은 하위 폴더 `CLAUDE.md`에 둔다
-- 최근 큰 변경은 auth gate, tty suspend 완화, plan finalization 수렴형 재설계다
-- 로컬 환경에서는 Claude 로그인/OAuth callback 이슈 가능성이 있어 실기동 확인이 아직 필요하다
-
-## Context Management Policy
-
-프로젝트 지식은 처음부터 feature별 마크다운으로 분리하여 계층적으로 관리한다. Root CLAUDE.md는 참조 허브 역할만 한다.
-
-### 구조
-
-- **Root** `CLAUDE.md` — 프로젝트 요약 + 각 폴더별 CLAUDE.md 참조만 유지
-- **폴더별** `{dir}/CLAUDE.md` — 해당 기능이 구현된 폴더 안에 상세 컨텍스트를 함께 배치
-
-### 규칙
-
-1. **상세 지식은 해당 기능 폴더의 CLAUDE.md에** — Root에 직접 상세 내용을 쓰지 않는다
-2. **Root는 참조 허브**: `@{dir}/CLAUDE.md` 형태로 참조만 유지
-3. **새 폴더/기능 추가 시** 해당 폴더에 CLAUDE.md 생성 → Root에 참조 추가
-4. **중복 금지**: 같은 내용이 2곳 이상이면 하나로 통합
-5. **자율 정리**: 중복, 관심사 혼재 발견 시 사용자 지시 없이 분리/재구성
+(컨텍스트 관리 원칙은 Global `~/.claude/CLAUDE.md` 참조)

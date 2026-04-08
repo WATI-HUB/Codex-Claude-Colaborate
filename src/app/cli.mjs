@@ -13,6 +13,73 @@ import {
 
 const homeDir = os.homedir();
 
+const PHASES = ["plan", "debate", "implement", "review"];
+
+function envPhaseMap(prefix) {
+  const map = {};
+  for (const phase of PHASES) {
+    const key = `${prefix}_${phase.toUpperCase()}`;
+    if (process.env[key]) {
+      map[phase] = process.env[key];
+    }
+  }
+  return map;
+}
+
+function applyCheapPreset(config) {
+  for (const phase of ["debate", "review"]) {
+    if (config.codex.phaseEfforts[phase] == null) {
+      config.codex.phaseEfforts[phase] = "low";
+    }
+    if (config.claude.phasePermissions[phase] == null) {
+      config.claude.phasePermissions[phase] = "plan";
+    }
+  }
+}
+
+function applyMaxPreset(config) {
+  for (const phase of PHASES) {
+    if (config.codex.phaseEfforts[phase] == null) {
+      config.codex.phaseEfforts[phase] = "high";
+    }
+  }
+  for (const phase of PHASES) {
+    if (config.claude.phasePermissions[phase] == null) {
+      config.claude.phasePermissions[phase] =
+        phase === "implement" ? "dontAsk" : "default";
+    }
+  }
+}
+
+function buildAgentConfig() {
+  return {
+    codex: {
+      model: process.env.DEBATE_CODEX_MODEL || "",
+      effort: process.env.DEBATE_CODEX_EFFORT || "",
+      sandbox: process.env.DEBATE_CODEX_SANDBOX || "",
+      phaseModels: envPhaseMap("DEBATE_CODEX_MODEL"),
+      phaseEfforts: envPhaseMap("DEBATE_CODEX_EFFORT"),
+      phaseSandboxes: envPhaseMap("DEBATE_CODEX_SANDBOX"),
+    },
+    claude: {
+      model: process.env.DEBATE_CLAUDE_MODEL || "",
+      permission: process.env.DEBATE_CLAUDE_PERMISSION || "",
+      phaseModels: envPhaseMap("DEBATE_CLAUDE_MODEL"),
+      phasePermissions: envPhaseMap("DEBATE_CLAUDE_PERMISSION"),
+    },
+  };
+}
+
+function tryPhaseFlag(arg, next, prefix, target) {
+  for (const phase of PHASES) {
+    if (arg === `${prefix}-${phase}`) {
+      target[phase] = next;
+      return true;
+    }
+  }
+  return false;
+}
+
 function parseArgs(argv) {
   const args = [...argv];
   const options = {
@@ -32,6 +99,8 @@ function parseArgs(argv) {
     claudeModel: process.env.DEBATE_CLAUDE_MODEL || "",
     skipWorkshop: process.env.DEBATE_SKIP_WORKSHOP === "1",
     dangerousClaudePermissions: process.env.DEBATE_CLAUDE_DANGEROUS === "1",
+    agentConfig: buildAgentConfig(),
+    preset: "",
   };
 
   if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
@@ -108,12 +177,57 @@ function parseArgs(argv) {
     }
     if (arg === "--codex-model") {
       options.codexModel = args[index + 1];
+      options.agentConfig.codex.model = args[index + 1];
       index += 1;
       continue;
     }
     if (arg === "--claude-model") {
       options.claudeModel = args[index + 1];
+      options.agentConfig.claude.model = args[index + 1];
       index += 1;
+      continue;
+    }
+    if (arg === "--codex-effort") {
+      options.agentConfig.codex.effort = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--codex-sandbox") {
+      options.agentConfig.codex.sandbox = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--claude-permission") {
+      options.agentConfig.claude.permission = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-model", options.agentConfig.codex.phaseModels)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-effort", options.agentConfig.codex.phaseEfforts)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-sandbox", options.agentConfig.codex.phaseSandboxes)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--claude-model", options.agentConfig.claude.phaseModels)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--claude-permission", options.agentConfig.claude.phasePermissions)) {
+      index += 1;
+      continue;
+    }
+    if (arg === "--cheap") {
+      options.preset = "cheap";
+      continue;
+    }
+    if (arg === "--max") {
+      options.preset = "max";
       continue;
     }
     if (arg === "--dangerous-claude") {
@@ -128,7 +242,32 @@ function parseArgs(argv) {
     options.task = options.task ? `${options.task} ${arg}` : arg;
   }
 
+  if (options.preset === "cheap") applyCheapPreset(options.agentConfig);
+  if (options.preset === "max") applyMaxPreset(options.agentConfig);
+
   return options;
+}
+
+function resolvePhaseValue(phaseMap, fallback) {
+  return (phase) => phaseMap[phase] || fallback || "—";
+}
+
+function printAgentMatrix(config) {
+  const codexModel = resolvePhaseValue(config.codex.phaseModels, config.codex.model);
+  const codexEffort = resolvePhaseValue(config.codex.phaseEfforts, config.codex.effort);
+  const codexSandbox = resolvePhaseValue(config.codex.phaseSandboxes, config.codex.sandbox);
+  const claudeModel = resolvePhaseValue(config.claude.phaseModels, config.claude.model);
+  const claudePerm = resolvePhaseValue(config.claude.phasePermissions, config.claude.permission);
+
+  const header =
+    "Phase     | Codex (model / effort / sandbox)                | Claude (model / permission)";
+  console.log(header);
+  console.log("-".repeat(header.length));
+  for (const phase of PHASES) {
+    const codex = `${codexModel(phase)} / ${codexEffort(phase)} / ${codexSandbox(phase)}`;
+    const claude = `${claudeModel(phase)} / ${claudePerm(phase)}`;
+    console.log(`${phase.padEnd(9)} | ${codex.padEnd(48)}| ${claude}`);
+  }
 }
 
 async function resolveBinary(preferredPath, fallbackCommand) {
@@ -179,6 +318,10 @@ async function doctor(options) {
     }`,
   );
 
+  console.log("");
+  printSection("Phase Matrix");
+  printAgentMatrix(options.agentConfig);
+
   if (!codexBin || !claudeBin) {
     process.exitCode = 1;
   }
@@ -207,8 +350,13 @@ Options:
   --max-cycles <n>
   --codex-bin <path>
   --claude-bin <path>
-  --codex-model <name>
-  --claude-model <name>
+  --codex-model <name>             (also --codex-model-{plan|debate|implement|review})
+  --codex-effort <low|medium|high> (also --codex-effort-<phase>)
+  --codex-sandbox <mode>           (also --codex-sandbox-<phase>)
+  --claude-model <name>            (also --claude-model-<phase>)
+  --claude-permission <mode>       (also --claude-permission-<phase>)
+  --cheap                          debate/review만 다운시프트
+  --max                            전 phase effort=high
   --skip-workshop
   --dangerous-claude
 `);
@@ -274,6 +422,7 @@ Options:
       maxCycles: options.maxCycles,
       skipWorkshop: options.skipWorkshop,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     return;
   }
@@ -293,6 +442,7 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     printSection("Plan Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));
@@ -309,6 +459,7 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     printSection("Run Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));
@@ -332,6 +483,7 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     printSection("Pipeline Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));

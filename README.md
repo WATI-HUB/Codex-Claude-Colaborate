@@ -116,9 +116,32 @@ claude setup-token
 - `DEBATE_SKIP_WORKSHOP=1`: 초기 기획 워크숍 생략
 - `DEBATE_CODEX_BIN`: Codex CLI 경로
 - `DEBATE_CLAUDE_BIN`: Claude CLI 경로
-- `DEBATE_CODEX_MODEL`: Codex 모델 override
-- `DEBATE_CLAUDE_MODEL`: Claude 모델 override
+- `DEBATE_CODEX_MODEL`: Codex 모델 override (전 phase fallback)
+- `DEBATE_CLAUDE_MODEL`: Claude 모델 override (전 phase fallback)
 - `DEBATE_CLAUDE_DANGEROUS=1`: Claude에 `--dangerously-skip-permissions`를 추가
+
+### Phase별 설정 (선택)
+
+4 phase: `plan`, `debate`, `implement`, `review`. 권장: **plan/implement는 풀스펙 유지, debate/review만 절약**.
+
+Codex
+- `DEBATE_CODEX_EFFORT` (low|medium|high) — 전 phase 기본 effort
+- `DEBATE_CODEX_SANDBOX` (read-only|workspace-write|danger-full-access)
+- `DEBATE_CODEX_MODEL_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW`
+- `DEBATE_CODEX_EFFORT_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW`
+- `DEBATE_CODEX_SANDBOX_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW`
+
+Claude
+- `DEBATE_CLAUDE_PERMISSION` (plan|acceptEdits|dontAsk|default|bypassPermissions)
+- `DEBATE_CLAUDE_MODEL_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW`
+- `DEBATE_CLAUDE_PERMISSION_PLAN` / `_DEBATE` / `_IMPLEMENT` / `_REVIEW`
+
+CLI 플래그도 env와 1:1 대응합니다 (예: `--codex-effort-debate low`, `--claude-permission-review plan`).
+
+프리셋
+- `--cheap` — debate/review만 effort↓ + Claude `plan` 모드. plan/implement는 그대로
+- `--max` — 전 phase effort=high
+- 개별 플래그는 프리셋보다 우선
 
 ## 주의
 

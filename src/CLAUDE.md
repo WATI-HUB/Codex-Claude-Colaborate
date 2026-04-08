@@ -18,4 +18,4 @@
 
 - `src/CLAUDE.md`에 상세 동작을 계속 쌓지 않는다.
 - 새 컨텍스트는 가장 가까운 하위 폴더 `CLAUDE.md`에 기록한다.
-- 여러 폴더에 걸치는 내용만 루트 `CLAUDE.md` 또는 `PLAN.md`에 남긴다.
+- 여러 폴더에 걸치는 내용만 Project Root `CLAUDE.md`에 한 단락 남긴다.
