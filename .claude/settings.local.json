@@ -9,7 +9,9 @@
       "Bash(DEBATE_CODEX_MODEL=o4-mini node:*)",
       "Bash(DEBATE_CODEX_EFFORT_REVIEW=low DEBATE_CLAUDE_PERMISSION_REVIEW=plan node src/app/cli.mjs plan \"smoke test V2\")",
       "Bash(kill 25758 25756)",
-      "Bash(git -C /Users/gimdong-wan/Codex-Claude-Debate log --oneline -5)"
+      "Bash(git -C /Users/gimdong-wan/Codex-Claude-Debate log --oneline -5)",
+      "Bash(wait)",
+      "Bash(DEBATE_CODEX_EFFORT_REVIEW=low DEBATE_CLAUDE_PERMISSION_REVIEW=plan node:*)"
     ]
   }
 }
