@@ -3,6 +3,7 @@ import os from "node:os";
 import { ensureAuthenticated, getAuthStatus } from "../core/auth.mjs";
 import { startChatSession } from "./chat-session.mjs";
 import { runOrchestrator } from "../engine/orchestrator.mjs";
+import { ClaudeAgent, CodexAgent } from "../engine/agents.mjs";
 import { runFullPipeline, runPlanOnly, runResume } from "../engine/pipeline.mjs";
 import { loadState } from "../core/state.mjs";
 import {
@@ -227,16 +228,36 @@ function parseArgs(argv) {
   return options;
 }
 
-function resolvePhaseValue(phaseMap, fallback) {
-  return (phase) => phaseMap[phase] || fallback || "—";
+function displayValue(value) {
+  return value || "—";
 }
 
 function printAgentMatrix(config) {
-  const codexModel = resolvePhaseValue(config.codex.phaseModels, config.codex.model);
-  const codexEffort = resolvePhaseValue(config.codex.phaseEfforts, config.codex.effort);
-  const codexSandbox = resolvePhaseValue(config.codex.phaseSandboxes, config.codex.sandbox);
-  const claudeModel = resolvePhaseValue(config.claude.phaseModels, config.claude.model);
-  const claudePerm = resolvePhaseValue(config.claude.phasePermissions, config.claude.permission);
+  const codexAgent = new CodexAgent({
+    bin: "",
+    workspace: "",
+    runDir: "",
+    model: config.codex.model,
+    effort: config.codex.effort,
+    sandbox: config.codex.sandbox,
+    phaseModels: config.codex.phaseModels,
+    phaseEfforts: config.codex.phaseEfforts,
+    phaseSandboxes: config.codex.phaseSandboxes,
+  });
+  const claudeAgent = new ClaudeAgent({
+    bin: "",
+    workspace: "",
+    runDir: "",
+    model: config.claude.model,
+    permission: config.claude.permission,
+    phaseModels: config.claude.phaseModels,
+    phasePermissions: config.claude.phasePermissions,
+  });
+  const codexModel = (phase) => displayValue(codexAgent.resolveModel(phase));
+  const codexEffort = (phase) => displayValue(codexAgent.resolveEffort(phase));
+  const codexSandbox = (phase) => codexAgent.describeSandbox(phase);
+  const claudeModel = (phase) => displayValue(claudeAgent.resolveModel(phase));
+  const claudePerm = (phase) => claudeAgent.describePermission(phase);
 
   const header =
     "Phase     | Codex (model / effort / sandbox)                | Claude (model / permission)";

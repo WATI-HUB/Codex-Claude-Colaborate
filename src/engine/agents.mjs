@@ -15,6 +15,10 @@ function schemaArg(schema) {
 }
 
 const VALID_PHASES = new Set(["plan", "debate", "implement", "review"]);
+const CODEX_STRUCTURED_SANDBOX_DEFAULT = "read-only";
+const CODEX_IMPLEMENT_SANDBOX_DISPLAY = "full-auto";
+const CLAUDE_STRUCTURED_PERMISSION_DEFAULT = "default";
+const CLAUDE_IMPLEMENT_PERMISSION_DEFAULT = "dontAsk";
 
 function resolvePhase(phase) {
   return phase && VALID_PHASES.has(phase) ? phase : null;
@@ -61,8 +65,17 @@ export class CodexAgent {
     return pickPhase(this.phaseSandboxes, phase, this.sandbox || fallback);
   }
 
+  describeSandbox(phase) {
+    const fallback =
+      resolvePhase(phase) === "implement"
+        ? null
+        : CODEX_STRUCTURED_SANDBOX_DEFAULT;
+    return this.resolveSandbox(phase, fallback) || CODEX_IMPLEMENT_SANDBOX_DISPLAY;
+  }
+
   async runStructured({ name, prompt, schema, sandbox, phase, timeoutMs = 20 * 60 * 1000 }) {
-    const resolvedSandbox = sandbox || this.resolveSandbox(phase, "read-only");
+    const resolvedSandbox =
+      sandbox || this.resolveSandbox(phase, CODEX_STRUCTURED_SANDBOX_DEFAULT);
     const resolvedModel = this.resolveModel(phase);
     const resolvedEffort = this.resolveEffort(phase);
     const phaseDir = path.join(this.runDir, "codex");
@@ -226,6 +239,14 @@ export class ClaudeAgent {
     return pickPhase(this.phasePermissions, phase, this.permission || fallback);
   }
 
+  describePermission(phase) {
+    const fallback =
+      resolvePhase(phase) === "implement"
+        ? CLAUDE_IMPLEMENT_PERMISSION_DEFAULT
+        : CLAUDE_STRUCTURED_PERMISSION_DEFAULT;
+    return this.resolvePermission(phase, fallback);
+  }
+
   async executeClaude(args, { cwd, timeoutMs, input }) {
     const preferredDirectPath =
       this.bin && this.bin.includes("/") ? this.bin : null;
@@ -265,7 +286,7 @@ export class ClaudeAgent {
     timeoutMs = 20 * 60 * 1000,
   }) {
     const resolvedPermission =
-      permissionMode || this.resolvePermission(phase, "default");
+      permissionMode || this.resolvePermission(phase, CLAUDE_STRUCTURED_PERMISSION_DEFAULT);
     const resolvedModel = this.resolveModel(phase);
     const phaseDir = path.join(this.runDir, "claude");
     await ensureDir(phaseDir);
@@ -344,7 +365,8 @@ export class ClaudeAgent {
     phase = "implement",
     timeoutMs = 45 * 60 * 1000,
   }) {
-    const resolvedPermission = this.resolvePermission(phase, "dontAsk");
+    const resolvedPermission =
+      this.resolvePermission(phase, CLAUDE_IMPLEMENT_PERMISSION_DEFAULT);
     const resolvedModel = this.resolveModel(phase);
     const phaseDir = path.join(this.runDir, "claude");
     await ensureDir(phaseDir);
