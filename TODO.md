@@ -1,8 +1,6 @@
 # TODO
 
-활성 작업: **단일 실행 + Plan 승인 게이트** (설계 → `src/app/CLAUDE.md` "Planned: 단일 실행…", `src/engine/CLAUDE.md` "Planned: runFullPipeline Plan 승인 훅")
-
-- [ ] Verification 1~7 (`src/app/CLAUDE.md` 참조)
+활성 작업 없음. 다음 작업을 지정하세요.
 
 ## 운용 규칙
 

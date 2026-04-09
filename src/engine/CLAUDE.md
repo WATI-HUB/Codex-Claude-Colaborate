@@ -81,7 +81,7 @@
 - `agents.mjs`의 Codex는 sandbox 미지정 시 implement에서 `--full-auto`, runStructured에서 `read-only`. Claude는 implement에서 `--permission-mode dontAsk`가 기본 fallback
 - 새 finalization 수렴 루프는 문법 검사는 끝났지만 full E2E는 추가 확인이 필요하다
 
-## Planned: `runFullPipeline` Plan 승인 훅 (미구현)
+## `runFullPipeline` Plan 승인 훅 (구현 완료)
 
 CLI UX 단순화(`src/app/CLAUDE.md` "Planned: 단일 실행…") 지원용. 엔진 쪽 최소 변경.
 

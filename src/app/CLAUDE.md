@@ -14,7 +14,7 @@
 - 일반 실행(`chat`, `plan`, `run`, `pipeline`) 전에는 auth gate를 통과해야 한다
 - `chat-ui.mjs`는 `SIGTTOU`/`SIGTTIN`을 무시해 `tty output` suspend를 줄인다
 
-## Planned: 단일 실행 + Plan 승인 게이트 (미구현)
+## 단일 실행 + Plan 승인 게이트 (구현 완료)
 
 사용자는 `plan`/`run`/`pipeline`/`chat` 분리 서브커맨드를 번거로워함. 엔진(`runFullPipeline`, `runExecutor`)은 이미 end-to-end + TDD 자체 루프라 **CLI UX만 정리**한다.
 
