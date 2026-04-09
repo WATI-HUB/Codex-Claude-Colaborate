@@ -56,6 +56,7 @@ export async function runFullPipeline({
   resumeOnly = false,
   planOnly = false,
   agentConfig = null,
+  onPlanReady = null,
 }) {
   const artifactsRoot = path.join(workspace, ".agent-debate");
   await ensureDir(artifactsRoot);
@@ -84,6 +85,7 @@ export async function runFullPipeline({
     state = await saveState(workspace, state);
   }
 
+  let planningRan = false;
   if (state.phase === "planning" && !resumeOnly) {
     const planResult = await runPlanner({
       workspace,
@@ -98,6 +100,31 @@ export async function runFullPipeline({
       return planResult;
     }
     state = planResult.state;
+    planningRan = true;
+  }
+
+  if (onPlanReady && planningRan && !resumeOnly) {
+    const gateResult = await onPlanReady(state);
+    if (gateResult && gateResult.action === "abort") {
+      return { status: "aborted", state };
+    } else if (gateResult && gateResult.action === "revise") {
+      state = await saveState(workspace, { ...state, phase: "planning" });
+      const revisedTask = `${userTask || state.task}\n\n[사용자 수정 요청]: ${gateResult.note}`;
+      const reviseResult = await runPlanner({
+        workspace,
+        userTask: revisedTask,
+        codexAgent,
+        claudeAgent,
+        state,
+        planningRounds,
+        ui,
+      });
+      if (reviseResult.status !== "ok") {
+        return reviseResult;
+      }
+      state = reviseResult.state;
+    }
+    // action:"go" or falsy → fall through to executor
   }
 
   if (planOnly) {

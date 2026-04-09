@@ -11,6 +11,7 @@ import {
   pathExists,
   printSection,
 } from "../core/utils.mjs";
+import { showPlanGate } from "./plan-gate.mjs";
 
 const homeDir = os.homedir();
 
@@ -100,6 +101,7 @@ function parseArgs(argv) {
     claudeModel: process.env.DEBATE_CLAUDE_MODEL || "",
     skipWorkshop: process.env.DEBATE_SKIP_WORKSHOP === "1",
     dangerousClaudePermissions: process.env.DEBATE_CLAUDE_DANGEROUS === "1",
+    autoApprove: process.env.DEBATE_AUTO_APPROVE_PLAN === "1",
     agentConfig: buildAgentConfig(),
     preset: "",
   };
@@ -218,6 +220,10 @@ function parseArgs(argv) {
       options.skipWorkshop = true;
       continue;
     }
+    if (arg === "--yes" || arg === "--auto") {
+      options.autoApprove = true;
+      continue;
+    }
 
     options.task = options.task ? `${options.task} ${arg}` : arg;
   }
@@ -332,32 +338,25 @@ async function main() {
 
   if (options.command === "help") {
     console.log(`Usage:
-  node src/app/cli.mjs
-  node src/app/cli.mjs chat
-  node src/app/cli.mjs "작업 지시"
-  node src/app/cli.mjs doctor
-  node src/app/cli.mjs plan "작업 지시"
-  node src/app/cli.mjs run
-  node src/app/cli.mjs status
-  zsh run-debate.sh
-  zsh run-debate.sh "작업 지시"
+  node src/app/cli.mjs "task"          # 권장: plan → 승인 → implement → complete
+  node src/app/cli.mjs                 # interactive chat
+  node src/app/cli.mjs doctor          # 바이너리/인증/phase 매트릭스 확인
+  node src/app/cli.mjs status          # 현재 state.json 조회
+  node src/app/cli.mjs run             # state.json에서 이어서 실행
 
-Options:
+Flags:
+  --yes, --auto                        plan 게이트 자동 통과 (env: DEBATE_AUTO_APPROVE_PLAN=1)
   --workspace, -C <path>
   --planning-rounds <n>
-  --debate-rounds <n>
-  --repair-rounds <n>
-  --max-cycles <n>
   --codex-bin <path>
   --claude-bin <path>
-  --codex-model <name>             (also --codex-model-{plan|debate|implement|review})
-  --codex-effort <low|medium|high> (also --codex-effort-<phase>)
-  --codex-sandbox <mode>           (also --codex-sandbox-<phase>)
-  --claude-model <name>            (also --claude-model-<phase>)
-  --claude-permission <mode>       (also --claude-permission-<phase>)
-  --cheap                          debate/review만 다운시프트
-  --max                            전 phase effort=high
-  --skip-workshop
+  --codex-model <name>                 (also --codex-model-{plan|debate|implement|review})
+  --codex-effort <low|medium|high>     (also --codex-effort-<phase>)
+  --codex-sandbox <mode>               (also --codex-sandbox-<phase>)
+  --claude-model <name>                (also --claude-model-<phase>)
+  --claude-permission <mode>           (also --claude-permission-<phase>)
+  --cheap                              debate/review만 다운시프트
+  --max                                전 phase effort=high
   --dangerous-claude
 `);
     return;
@@ -474,6 +473,9 @@ Options:
 
   // 기본: 새 파이프라인 (full pipeline)
   if (options.command === "pipeline" || options.command === "chat") {
+    const onPlanReady = options.autoApprove
+      ? null  // null이면 pipeline.mjs가 게이트 스킵
+      : (state) => showPlanGate(state);
     const result = await runFullPipeline({
       workspace: path.resolve(options.workspace),
       userTask: options.task.trim(),
@@ -484,6 +486,7 @@ Options:
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
       agentConfig: options.agentConfig,
+      onPlanReady,
     });
     printSection("Pipeline Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));
