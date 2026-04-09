@@ -108,34 +108,13 @@ function parseArgs(argv) {
     return options;
   }
 
-  if (args[0] === "chat") {
-    options.command = "chat";
-    args.shift();
-  }
-
-  if (args[0] === "doctor") {
-    options.command = "doctor";
-    return options;
-  }
-
-  if (args[0] === "run") {
-    options.command = "run";
-    args.shift();
-  }
-
-  if (args[0] === "plan") {
-    options.command = "plan";
-    args.shift();
-  }
-
-  if (args[0] === "status") {
-    options.command = "status";
-    args.shift();
-  }
-
-  if (args[0] === "pipeline") {
-    options.command = "pipeline";
-    args.shift();
+  // 서브커맨드는 플래그 앞뒤 어디에도 올 수 있다 (예: --cheap doctor)
+  const SUBCOMMANDS = ["chat", "doctor", "run", "plan", "status", "pipeline"];
+  const subcmdIdx = args.findIndex((a) => SUBCOMMANDS.includes(a));
+  if (subcmdIdx !== -1) {
+    options.command = args[subcmdIdx];
+    args.splice(subcmdIdx, 1);
+    // doctor/status는 플래그 파싱 후 반환하므로 여기서는 continue
   }
 
   for (let index = 0; index < args.length; index += 1) {

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(node:*)",
       "Bash(python3:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(ln -sf CLAUDE.md __TRACKED_VAR__/AGENTS.md)",
+      "Bash(DEBATE_CODEX_EFFORT_REVIEW=low DEBATE_CLAUDE_PERMISSION_REVIEW=plan DEBATE_CODEX_MODEL_PLAN=o3 DEBATE_CLAUDE_MODEL_DEBATE=claude-haiku-4-5-20251001 node:*)",
+      "Bash(DEBATE_CODEX_MODEL=o4-mini node:*)"
     ]
   }
 }

@@ -81,6 +81,19 @@
 - `agents.mjs`의 Codex는 sandbox 미지정 시 implement에서 `--full-auto`, runStructured에서 `read-only`. Claude는 implement에서 `--permission-mode dontAsk`가 기본 fallback
 - 새 finalization 수렴 루프는 문법 검사는 끝났지만 full E2E는 추가 확인이 필요하다
 
+## Planned: `runFullPipeline` Plan 승인 훅 (미구현)
+
+CLI UX 단순화(`src/app/CLAUDE.md` "Planned: 단일 실행…") 지원용. 엔진 쪽 최소 변경.
+
+- `runFullPipeline({ ..., onPlanReady })` 옵션 추가
+- 흐름: `runPlanner` 성공 → `state.phase === "executing"` → `onPlanReady(state)` 있으면 await 호출
+  - 콜백 미제공 또는 `resumeOnly` 또는 state가 이미 `executing`이면 호출 스킵 (resume 시 재노출 방지)
+- 반환 분기:
+  - `{action:"go"}` 또는 falsy → executor 진입
+  - `{action:"abort"}` → `{status:"aborted", state}` 반환 (state.json은 executing phase 그대로 남김)
+  - `{action:"revise", note}` → planner 1회 재실행. `userTask`에 note를 append하거나 planner에 revise hint로 주입. state는 `planning`으로 롤백
+- Executor 내부 `requestUserInput` 경로는 건드리지 않는다 — 이미 필요 시만 멈추는 정책
+
 ## What To Update Here
 
 - consensus rules

@@ -17,18 +17,27 @@ function createAgents({
   codexModel,
   claudeModel,
   dangerousClaudePermissions,
+  agentConfig,
 }) {
   const codexAgent = new CodexAgent({
     bin: codexBin,
     workspace,
     runDir,
-    model: codexModel,
+    model: agentConfig?.codex?.model || codexModel,
+    effort: agentConfig?.codex?.effort || "",
+    sandbox: agentConfig?.codex?.sandbox || "",
+    phaseModels: agentConfig?.codex?.phaseModels || {},
+    phaseEfforts: agentConfig?.codex?.phaseEfforts || {},
+    phaseSandboxes: agentConfig?.codex?.phaseSandboxes || {},
   });
   const claudeAgent = new ClaudeAgent({
     bin: claudeBin,
     workspace,
     runDir,
-    model: claudeModel,
+    model: agentConfig?.claude?.model || claudeModel,
+    permission: agentConfig?.claude?.permission || "",
+    phaseModels: agentConfig?.claude?.phaseModels || {},
+    phasePermissions: agentConfig?.claude?.phasePermissions || {},
     dangerousSkipPermissions: dangerousClaudePermissions,
   });
   return { codexAgent, claudeAgent };
@@ -46,6 +55,7 @@ export async function runFullPipeline({
   ui = null,
   resumeOnly = false,
   planOnly = false,
+  agentConfig = null,
 }) {
   const artifactsRoot = path.join(workspace, ".agent-debate");
   await ensureDir(artifactsRoot);
@@ -60,6 +70,7 @@ export async function runFullPipeline({
     codexModel,
     claudeModel,
     dangerousClaudePermissions,
+    agentConfig,
   });
 
   let state = await loadState(workspace);

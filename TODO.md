@@ -2,12 +2,14 @@
 
 활성 작업: **Phase별 모델/effort/권한** (설계 → `src/engine/CLAUDE.md`)
 
-- [ ] `agents.mjs` phase-aware 인자 빌드 (Codex/Claude) — `src/engine/`
-- [ ] `cli.mjs` env/플래그/프리셋 파싱 + doctor 매트릭스 출력 — `src/app/`
-- [ ] `pipeline.mjs` agentConfig 배선 — `src/engine/`
-- [ ] `planner.mjs`/`executor.mjs` 호출부에 `phase` 인자 추가 — `src/engine/`
-- [ ] `AGENTS.md` 심볼릭 링크 5개 (`/`, `src/`, `src/app/`, `src/core/`, `src/engine/`)
 - [ ] Verification 1~7 실행 (체크 항목은 `src/engine/CLAUDE.md` "Verification" 참조)
+
+다음 작업: **단일 실행 + Plan 승인 게이트** (설계 → `src/app/CLAUDE.md` "Planned: 단일 실행…", `src/engine/CLAUDE.md` "Planned: runFullPipeline Plan 승인 훅")
+
+- [ ] `pipeline.mjs` `onPlanReady` 훅 + go/abort/revise 분기 — `src/engine/`
+- [ ] `src/app/plan-gate.mjs` 신규 (readline, chat-ui 패턴 재사용) — `src/app/`
+- [ ] `cli.mjs` 기본 진입점/`--yes`/TTY 감지/help 재작성 + 게이트 주입 — `src/app/`
+- [ ] Verification 1~7 (`src/app/CLAUDE.md` 참조)
 
 ## 운용 규칙
 

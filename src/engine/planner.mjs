@@ -181,6 +181,7 @@ async function finalizePlan({
         name: `plan-finalization-r${String(round).padStart(2, "0")}`,
         prompt: codexPrompt,
         schema: planFinalizationSchema,
+        phase: "plan",
       }),
     );
 
@@ -193,6 +194,7 @@ async function finalizePlan({
         schema: planFinalizationSchema,
         systemPrompt: debateSystemPrompt("Claude", "Codex"),
         disableTools: true,
+        phase: "plan",
       }),
     );
 
