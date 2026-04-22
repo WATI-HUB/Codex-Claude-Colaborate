@@ -1,17 +1,86 @@
 import path from "node:path";
 import os from "node:os";
-import { ensureAuthenticated, getAuthStatus } from "./auth.mjs";
+import { ensureAuthenticated, getAuthStatus } from "../core/auth.mjs";
 import { startChatSession } from "./chat-session.mjs";
-import { runOrchestrator } from "./orchestrator.mjs";
-import { runFullPipeline, runPlanOnly, runResume } from "./pipeline.mjs";
-import { loadState } from "./state.mjs";
+import { runOrchestrator } from "../engine/orchestrator.mjs";
+import { ClaudeAgent, CodexAgent } from "../engine/agents.mjs";
+import { runFullPipeline, runPlanOnly, runResume } from "../engine/pipeline.mjs";
+import { loadState } from "../core/state.mjs";
 import {
   commandExists,
   pathExists,
   printSection,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
+import { showPlanGate } from "./plan-gate.mjs";
 
 const homeDir = os.homedir();
+
+const PHASES = ["plan", "debate", "implement", "review"];
+
+function envPhaseMap(prefix) {
+  const map = {};
+  for (const phase of PHASES) {
+    const key = `${prefix}_${phase.toUpperCase()}`;
+    if (process.env[key]) {
+      map[phase] = process.env[key];
+    }
+  }
+  return map;
+}
+
+function applyCheapPreset(config) {
+  for (const phase of ["debate", "review"]) {
+    if (config.codex.phaseEfforts[phase] == null) {
+      config.codex.phaseEfforts[phase] = "low";
+    }
+    if (config.claude.phasePermissions[phase] == null) {
+      config.claude.phasePermissions[phase] = "plan";
+    }
+  }
+}
+
+function applyMaxPreset(config) {
+  for (const phase of PHASES) {
+    if (config.codex.phaseEfforts[phase] == null) {
+      config.codex.phaseEfforts[phase] = "high";
+    }
+  }
+  for (const phase of PHASES) {
+    if (config.claude.phasePermissions[phase] == null) {
+      config.claude.phasePermissions[phase] =
+        phase === "implement" ? "dontAsk" : "default";
+    }
+  }
+}
+
+function buildAgentConfig() {
+  return {
+    codex: {
+      model: process.env.DEBATE_CODEX_MODEL || "",
+      effort: process.env.DEBATE_CODEX_EFFORT || "",
+      sandbox: process.env.DEBATE_CODEX_SANDBOX || "",
+      phaseModels: envPhaseMap("DEBATE_CODEX_MODEL"),
+      phaseEfforts: envPhaseMap("DEBATE_CODEX_EFFORT"),
+      phaseSandboxes: envPhaseMap("DEBATE_CODEX_SANDBOX"),
+    },
+    claude: {
+      model: process.env.DEBATE_CLAUDE_MODEL || "",
+      permission: process.env.DEBATE_CLAUDE_PERMISSION || "",
+      phaseModels: envPhaseMap("DEBATE_CLAUDE_MODEL"),
+      phasePermissions: envPhaseMap("DEBATE_CLAUDE_PERMISSION"),
+    },
+  };
+}
+
+function tryPhaseFlag(arg, next, prefix, target) {
+  for (const phase of PHASES) {
+    if (arg === `${prefix}-${phase}`) {
+      target[phase] = next;
+      return true;
+    }
+  }
+  return false;
+}
 
 function parseArgs(argv) {
   const args = [...argv];
@@ -32,6 +101,9 @@ function parseArgs(argv) {
     claudeModel: process.env.DEBATE_CLAUDE_MODEL || "",
     skipWorkshop: process.env.DEBATE_SKIP_WORKSHOP === "1",
     dangerousClaudePermissions: process.env.DEBATE_CLAUDE_DANGEROUS === "1",
+    autoApprove: process.env.DEBATE_AUTO_APPROVE_PLAN === "1",
+    agentConfig: buildAgentConfig(),
+    preset: "",
   };
 
   if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
@@ -39,34 +111,13 @@ function parseArgs(argv) {
     return options;
   }
 
-  if (args[0] === "chat") {
-    options.command = "chat";
-    args.shift();
-  }
-
-  if (args[0] === "doctor") {
-    options.command = "doctor";
-    return options;
-  }
-
-  if (args[0] === "run") {
-    options.command = "run";
-    args.shift();
-  }
-
-  if (args[0] === "plan") {
-    options.command = "plan";
-    args.shift();
-  }
-
-  if (args[0] === "status") {
-    options.command = "status";
-    args.shift();
-  }
-
-  if (args[0] === "pipeline") {
-    options.command = "pipeline";
-    args.shift();
+  // 서브커맨드는 플래그 앞뒤 어디에도 올 수 있다 (예: --cheap doctor)
+  const SUBCOMMANDS = ["chat", "doctor", "run", "plan", "status", "pipeline"];
+  const subcmdIdx = args.findIndex((a) => SUBCOMMANDS.includes(a));
+  if (subcmdIdx !== -1) {
+    options.command = args[subcmdIdx];
+    args.splice(subcmdIdx, 1);
+    // doctor/status는 플래그 파싱 후 반환하므로 여기서는 continue
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -108,12 +159,57 @@ function parseArgs(argv) {
     }
     if (arg === "--codex-model") {
       options.codexModel = args[index + 1];
+      options.agentConfig.codex.model = args[index + 1];
       index += 1;
       continue;
     }
     if (arg === "--claude-model") {
       options.claudeModel = args[index + 1];
+      options.agentConfig.claude.model = args[index + 1];
       index += 1;
+      continue;
+    }
+    if (arg === "--codex-effort") {
+      options.agentConfig.codex.effort = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--codex-sandbox") {
+      options.agentConfig.codex.sandbox = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--claude-permission") {
+      options.agentConfig.claude.permission = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-model", options.agentConfig.codex.phaseModels)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-effort", options.agentConfig.codex.phaseEfforts)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--codex-sandbox", options.agentConfig.codex.phaseSandboxes)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--claude-model", options.agentConfig.claude.phaseModels)) {
+      index += 1;
+      continue;
+    }
+    if (tryPhaseFlag(arg, args[index + 1], "--claude-permission", options.agentConfig.claude.phasePermissions)) {
+      index += 1;
+      continue;
+    }
+    if (arg === "--cheap") {
+      options.preset = "cheap";
+      continue;
+    }
+    if (arg === "--max") {
+      options.preset = "max";
       continue;
     }
     if (arg === "--dangerous-claude") {
@@ -124,11 +220,60 @@ function parseArgs(argv) {
       options.skipWorkshop = true;
       continue;
     }
+    if (arg === "--yes" || arg === "--auto") {
+      options.autoApprove = true;
+      continue;
+    }
 
     options.task = options.task ? `${options.task} ${arg}` : arg;
   }
 
+  if (options.preset === "cheap") applyCheapPreset(options.agentConfig);
+  if (options.preset === "max") applyMaxPreset(options.agentConfig);
+
   return options;
+}
+
+function displayValue(value) {
+  return value || "—";
+}
+
+function printAgentMatrix(config) {
+  const codexAgent = new CodexAgent({
+    bin: "",
+    workspace: "",
+    runDir: "",
+    model: config.codex.model,
+    effort: config.codex.effort,
+    sandbox: config.codex.sandbox,
+    phaseModels: config.codex.phaseModels,
+    phaseEfforts: config.codex.phaseEfforts,
+    phaseSandboxes: config.codex.phaseSandboxes,
+  });
+  const claudeAgent = new ClaudeAgent({
+    bin: "",
+    workspace: "",
+    runDir: "",
+    model: config.claude.model,
+    permission: config.claude.permission,
+    phaseModels: config.claude.phaseModels,
+    phasePermissions: config.claude.phasePermissions,
+  });
+  const codexModel = (phase) => displayValue(codexAgent.resolveModel(phase));
+  const codexEffort = (phase) => displayValue(codexAgent.resolveEffort(phase));
+  const codexSandbox = (phase) => codexAgent.describeSandbox(phase);
+  const claudeModel = (phase) => displayValue(claudeAgent.resolveModel(phase));
+  const claudePerm = (phase) => claudeAgent.describePermission(phase);
+
+  const header =
+    "Phase     | Codex (model / effort / sandbox)                | Claude (model / permission)";
+  console.log(header);
+  console.log("-".repeat(header.length));
+  for (const phase of PHASES) {
+    const codex = `${codexModel(phase)} / ${codexEffort(phase)} / ${codexSandbox(phase)}`;
+    const claude = `${claudeModel(phase)} / ${claudePerm(phase)}`;
+    console.log(`${phase.padEnd(9)} | ${codex.padEnd(48)}| ${claude}`);
+  }
 }
 
 async function resolveBinary(preferredPath, fallbackCommand) {
@@ -179,6 +324,10 @@ async function doctor(options) {
     }`,
   );
 
+  console.log("");
+  printSection("Phase Matrix");
+  printAgentMatrix(options.agentConfig);
+
   if (!codexBin || !claudeBin) {
     process.exitCode = 1;
   }
@@ -189,27 +338,25 @@ async function main() {
 
   if (options.command === "help") {
     console.log(`Usage:
-  node src/cli.mjs
-  node src/cli.mjs chat
-  node src/cli.mjs "작업 지시"
-  node src/cli.mjs doctor
-  node src/cli.mjs plan "작업 지시"
-  node src/cli.mjs run
-  node src/cli.mjs status
-  zsh run-debate.sh
-  zsh run-debate.sh "작업 지시"
+  node src/app/cli.mjs "task"          # 권장: plan → 승인 → implement → complete
+  node src/app/cli.mjs                 # interactive chat
+  node src/app/cli.mjs doctor          # 바이너리/인증/phase 매트릭스 확인
+  node src/app/cli.mjs status          # 현재 state.json 조회
+  node src/app/cli.mjs run             # state.json에서 이어서 실행
 
-Options:
+Flags:
+  --yes, --auto                        plan 게이트 자동 통과 (env: DEBATE_AUTO_APPROVE_PLAN=1)
   --workspace, -C <path>
   --planning-rounds <n>
-  --debate-rounds <n>
-  --repair-rounds <n>
-  --max-cycles <n>
   --codex-bin <path>
   --claude-bin <path>
-  --codex-model <name>
-  --claude-model <name>
-  --skip-workshop
+  --codex-model <name>                 (also --codex-model-{plan|debate|implement|review})
+  --codex-effort <low|medium|high>     (also --codex-effort-<phase>)
+  --codex-sandbox <mode>               (also --codex-sandbox-<phase>)
+  --claude-model <name>                (also --claude-model-<phase>)
+  --claude-permission <mode>           (also --claude-permission-<phase>)
+  --cheap                              debate/review만 다운시프트
+  --max                                전 phase effort=high
   --dangerous-claude
 `);
     return;
@@ -274,6 +421,7 @@ Options:
       maxCycles: options.maxCycles,
       skipWorkshop: options.skipWorkshop,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     return;
   }
@@ -293,6 +441,7 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     printSection("Plan Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));
@@ -309,6 +458,7 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
     });
     printSection("Run Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));
@@ -316,13 +466,16 @@ Options:
   }
 
   if (!options.task.trim()) {
-    console.error("작업 지시가 비어 있습니다. 예: zsh run-debate.sh 또는 node src/cli.mjs \"로그인 화면 고쳐줘\"");
+    console.error("작업 지시가 비어 있습니다. 예: zsh run-debate.sh 또는 node src/app/cli.mjs \"로그인 화면 고쳐줘\"");
     process.exitCode = 1;
     return;
   }
 
   // 기본: 새 파이프라인 (full pipeline)
   if (options.command === "pipeline" || options.command === "chat") {
+    const onPlanReady = options.autoApprove
+      ? null  // null이면 pipeline.mjs가 게이트 스킵
+      : (state) => showPlanGate(state);
     const result = await runFullPipeline({
       workspace: path.resolve(options.workspace),
       userTask: options.task.trim(),
@@ -332,6 +485,8 @@ Options:
       claudeModel: options.claudeModel || undefined,
       planningRounds: options.planningRounds,
       dangerousClaudePermissions: options.dangerousClaudePermissions,
+      agentConfig: options.agentConfig,
+      onPlanReady,
     });
     printSection("Pipeline Result");
     console.log(JSON.stringify({ status: result.status, error: result.error }, null, 2));

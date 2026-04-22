@@ -6,8 +6,8 @@ import {
   createInitialState,
   loadState,
   saveState,
-} from "./state.mjs";
-import { ensureDir, nowStamp } from "./utils.mjs";
+} from "../core/state.mjs";
+import { ensureDir, nowStamp } from "../core/utils.mjs";
 
 function createAgents({
   workspace,
@@ -17,18 +17,27 @@ function createAgents({
   codexModel,
   claudeModel,
   dangerousClaudePermissions,
+  agentConfig,
 }) {
   const codexAgent = new CodexAgent({
     bin: codexBin,
     workspace,
     runDir,
-    model: codexModel,
+    model: agentConfig?.codex?.model || codexModel,
+    effort: agentConfig?.codex?.effort || "",
+    sandbox: agentConfig?.codex?.sandbox || "",
+    phaseModels: agentConfig?.codex?.phaseModels || {},
+    phaseEfforts: agentConfig?.codex?.phaseEfforts || {},
+    phaseSandboxes: agentConfig?.codex?.phaseSandboxes || {},
   });
   const claudeAgent = new ClaudeAgent({
     bin: claudeBin,
     workspace,
     runDir,
-    model: claudeModel,
+    model: agentConfig?.claude?.model || claudeModel,
+    permission: agentConfig?.claude?.permission || "",
+    phaseModels: agentConfig?.claude?.phaseModels || {},
+    phasePermissions: agentConfig?.claude?.phasePermissions || {},
     dangerousSkipPermissions: dangerousClaudePermissions,
   });
   return { codexAgent, claudeAgent };
@@ -46,6 +55,8 @@ export async function runFullPipeline({
   ui = null,
   resumeOnly = false,
   planOnly = false,
+  agentConfig = null,
+  onPlanReady = null,
 }) {
   const artifactsRoot = path.join(workspace, ".agent-debate");
   await ensureDir(artifactsRoot);
@@ -60,6 +71,7 @@ export async function runFullPipeline({
     codexModel,
     claudeModel,
     dangerousClaudePermissions,
+    agentConfig,
   });
 
   let state = await loadState(workspace);
@@ -73,6 +85,7 @@ export async function runFullPipeline({
     state = await saveState(workspace, state);
   }
 
+  let planningRan = false;
   if (state.phase === "planning" && !resumeOnly) {
     const planResult = await runPlanner({
       workspace,
@@ -87,6 +100,31 @@ export async function runFullPipeline({
       return planResult;
     }
     state = planResult.state;
+    planningRan = true;
+  }
+
+  if (onPlanReady && planningRan && !resumeOnly) {
+    const gateResult = await onPlanReady(state);
+    if (gateResult && gateResult.action === "abort") {
+      return { status: "aborted", state };
+    } else if (gateResult && gateResult.action === "revise") {
+      state = await saveState(workspace, { ...state, phase: "planning" });
+      const revisedTask = `${userTask || state.task}\n\n[사용자 수정 요청]: ${gateResult.note}`;
+      const reviseResult = await runPlanner({
+        workspace,
+        userTask: revisedTask,
+        codexAgent,
+        claudeAgent,
+        state,
+        planningRounds,
+        ui,
+      });
+      if (reviseResult.status !== "ok") {
+        return reviseResult;
+      }
+      state = reviseResult.state;
+    }
+    // action:"go" or falsy → fall through to executor
   }
 
   if (planOnly) {

@@ -1,4 +1,4 @@
-import { runCommand } from "./utils.mjs";
+import { runCommand } from "../core/utils.mjs";
 
 async function git(workspace, args, { allowFailure = true } = {}) {
   return runCommand("git", args, {

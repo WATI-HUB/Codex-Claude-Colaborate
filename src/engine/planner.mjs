@@ -12,7 +12,7 @@ import {
   requestUserInput,
   runPlanningWorkshop,
 } from "./orchestrator.mjs";
-import { collectWorkspaceContext } from "./context.mjs";
+import { collectWorkspaceContext } from "../core/context.mjs";
 import {
   Spinner,
   bold,
@@ -20,7 +20,7 @@ import {
   codex as codexColor,
   dim,
   withSpinner,
-} from "./terminal.mjs";
+} from "../core/terminal.mjs";
 import {
   commandExists,
   ensureDir,
@@ -28,8 +28,8 @@ import {
   truncate,
   writeJson,
   writeText,
-} from "./utils.mjs";
-import { setFeaturesFromPlan, setPhase, saveState } from "./state.mjs";
+} from "../core/utils.mjs";
+import { setFeaturesFromPlan, setPhase, saveState } from "../core/state.mjs";
 
 const MAX_PLAN_FINALIZATION_ROUNDS = 3;
 
@@ -181,6 +181,7 @@ async function finalizePlan({
         name: `plan-finalization-r${String(round).padStart(2, "0")}`,
         prompt: codexPrompt,
         schema: planFinalizationSchema,
+        phase: "plan",
       }),
     );
 
@@ -193,6 +194,7 @@ async function finalizePlan({
         schema: planFinalizationSchema,
         systemPrompt: debateSystemPrompt("Claude", "Codex"),
         disableTools: true,
+        phase: "plan",
       }),
     );
 
@@ -226,7 +228,7 @@ async function finalizePlan({
       codexResult.parsed.decision.status === "needs_user_input" &&
       claudeResult.parsed.decision.status === "needs_user_input";
 
-    if (equivalent && !bothNeedUserInput && (bothAgree || round === maxRounds)) {
+    if (!bothNeedUserInput && (bothAgree || (equivalent && round === maxRounds))) {
       return {
         ok: true,
         plan: buildSharedPlan(codexResult.parsed, claudeResult.parsed),

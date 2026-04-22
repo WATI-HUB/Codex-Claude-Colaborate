@@ -9,8 +9,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runFullPipeline } from "./src/pipeline.mjs";
-import { commandExists, pathExists } from "./src/utils.mjs";
+import { runFullPipeline } from "./src/engine/pipeline.mjs";
+import { commandExists, pathExists } from "./src/core/utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const homeDir = (await import("node:os")).default.homedir();

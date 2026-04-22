@@ -1,4 +1,4 @@
-import { formatBulletList } from "./utils.mjs";
+import { formatBulletList } from "../core/utils.mjs";
 
 export const planningSchema = {
   type: "object",

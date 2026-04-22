@@ -4,7 +4,7 @@ import {
   collectWorkspaceContext,
   diffSnapshots,
   snapshotWorkspace,
-} from "./context.mjs";
+} from "../core/context.mjs";
 import {
   buildFeatureDebatePrompt,
   buildFeatureImplementationPrompt,
@@ -29,7 +29,7 @@ import {
   dim,
   success,
   withSpinner,
-} from "./terminal.mjs";
+} from "../core/terminal.mjs";
 import {
   ensureDir,
   readText,
@@ -37,13 +37,13 @@ import {
   truncate,
   writeJson,
   writeText,
-} from "./utils.mjs";
+} from "../core/utils.mjs";
 import {
   advanceFeature,
   currentFeature,
   saveState,
   updateFeature,
-} from "./state.mjs";
+} from "../core/state.mjs";
 import {
   commitAll,
   createBranch,
@@ -104,6 +104,7 @@ async function runFeatureDebate({
         name: `${feature.id}-debate-r${round}`,
         prompt: codexPrompt,
         schema: debateSchema,
+        phase: "debate",
       }),
     );
     const claudeResult = await withSpinner(
@@ -115,6 +116,7 @@ async function runFeatureDebate({
         schema: debateSchema,
         systemPrompt: debateSystemPrompt("Claude", "Codex"),
         disableTools: true,
+        phase: "debate",
       }),
     );
 
@@ -185,6 +187,7 @@ async function runFeatureReview({
       schema: reviewSchema,
       systemPrompt: debateSystemPrompt(reviewerName, implementerName),
       disableTools: reviewerName === "Claude",
+      phase: "review",
     }),
   );
 
@@ -274,11 +277,13 @@ async function executeFeature({
           ? codexAgent.implement({
               name: `${feature.id}-impl-${repairAttempts + 1}`,
               prompt: implPrompt,
+              phase: "implement",
             })
           : claudeAgent.implement({
               name: `${feature.id}-impl-${repairAttempts + 1}`,
               prompt: implPrompt,
               systemPrompt: debateSystemPrompt("Claude", "Codex"),
+              phase: "implement",
             }),
       );
 
